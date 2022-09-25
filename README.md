@@ -1,7 +1,6 @@
 # Cyclistic-Bike-Share
 
 
-Cancel changes
 ### Table of Contents
    - [Background](#background)
    - [Task](#task)
