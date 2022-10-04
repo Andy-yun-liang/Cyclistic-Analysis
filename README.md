@@ -37,8 +37,10 @@ sqlqry = dbGetQuery(connection,"SELECT member_casual,
 sqlqry %>% 
 ggplot(aes(x=Month,y=Count,color = member_casual)) + 
 geom_line() + geom_text(data = . %>% group_by(member_casual) %>% 
-filter(Count == max(Count)), aes(label = Count,group=member_casual),show.legend = FALSE,vjust=-0.15) +
-labs(title = "Distribution of Users (June 2021 to May 2022)",x="Month",y="Count of Members",color = "Groups") + 
+filter(Count == max(Count)), aes(label = Count,group=member_casual),
+show.legend = FALSE,vjust=-0.15) +
+labs(title = "Distribution of Users (June 2021 to May 2022)",x="Month",
+y="Count of Members",color = "Groups") + 
 scale_y_continuous(labels = comma) + scale_x_discrete(limits=month.abb) + theme_bw()
 ```
 ![q1](https://user-images.githubusercontent.com/73871814/193787876-795d9654-8172-4e46-b9d4-000b5b267910.PNG)
@@ -64,7 +66,8 @@ qry2 = dbGetQuery(connection,"SELECT member_casual,
 qry2 %>% mutate(member_casual = as.factor(member_casual)) %>% 
 ggplot(aes(member_casual,AverageBorrowDuration,fill = member_casual)) + 
 stat_summary(geom = "bar", fun = 'identity') + 
-labs(title = "Average Borrow Duration in Minutes (June 2021 to May 2022)",x="Groups",y="Minutes",fill = "Groups") + 
+labs(title = "Average Borrow Duration in Minutes (June 2021 to May 2022)",
+x="Groups",y="Minutes",fill = "Groups") + 
 geom_text(aes(label = AverageBorrowDuration), vjust = -0.2) + theme_bw()
 ```
 ![q2a](https://user-images.githubusercontent.com/73871814/193787899-3f3f1f7c-2df0-4fd4-a68a-e73ee9150ff9.PNG)
