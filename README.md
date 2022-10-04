@@ -13,6 +13,9 @@ An analysis of a fictional bikeshare company located in Chicago. The analysis is
 ## Background
 Cyclistic has been a successful bike-share program since launching in 2016. The initiative has grown to a fleet of 5,824 bicycles that are geotracked and locked intoa network of 692 stations throughout Chicago. The variety of bikes can be unlocked at any station and returned to any other station at anytime.
 
+The data can be found here: 
+https://divvy-tripdata.s3.amazonaws.com/index.html
+
 ## Task
 To be able to derive actionable insights to convert the casual riders into annual members but in order to do so we need to understand the: 
 
