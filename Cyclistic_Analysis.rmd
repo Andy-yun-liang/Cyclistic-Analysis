@@ -1,0 +1,291 @@
+---
+title: "Project"
+author: "Andy Liang"
+date: "8/24/2022"
+output: html_document
+---
+
+Libraries
+```{r}
+library(bigrquery)
+library(DBI)
+library(tidyverse)
+library(scales)
+library(ggrepel)
+library(readr)
+library(RColorBrewer)
+```
+
+
+Connecting to Big Query
+```{r}
+#Making Connection to BigQuery
+bq_auth()
+
+
+connection = dbConnect(
+  bigrquery::bigquery(),
+  project = read_file("ProjectId.txt"), 
+  dataset = read_file("datasetId.txt"),
+  billing = read_file("ProjectId.txt")
+)
+#Listing Tables
+dbListTables(connection)
+
+```
+
+
+#Previewing dataset to get a grasp of the schema
+```{r}
+#pointer to table so i can take a peak at the data
+table_ptr = tbl(connection,"2021_06")
+
+glimpse(table_ptr)
+count(table_ptr)
+```
+
+#creating a new table
+```{r}
+dbGetQuery(connection,"CREATE TABLE `some_table_name` (ride_id STRING,
+rideable_type	STRING,		
+started_at	TIMESTAMP,	
+ended_at	TIMESTAMP,
+start_station_name	STRING,	
+start_station_id	STRING,
+end_station_name	STRING,		
+end_station_id	STRING,	
+start_lat	FLOAT64,
+start_lng	FLOAT64,	
+end_lat	FLOAT64,
+end_lng	FLOAT64,	
+member_casual	STRING,		
+ride_length	TIME,
+day_of_week	INT64
+);")
+```
+
+#inserting all 12 datasets into the new table
+```{r}
+dbGetQuery(connection,"INSERT INTO `some_table_name` (
+ride_id,
+rideable_type,		
+started_at,	
+ended_at,
+start_station_name,	
+start_station_id,
+end_station_name,		
+end_station_id,	
+start_lat,
+start_lng,	
+end_lat,
+end_lng,	
+member_casual,		
+ride_length,
+day_of_week) 
+SELECT * FROM `BikeData.2021_06`
+UNION DISTINCT SELECT * FROM `BikeData.2021_07`
+UNION DISTINCT SELECT * FROM `BikeData.2021_08`
+UNION DISTINCT SELECT * FROM `BikeData.2021_09`
+UNION DISTINCT SELECT * FROM `BikeData.2021_10`
+UNION DISTINCT SELECT * FROM `BikeData.2021_11`
+UNION DISTINCT SELECT * FROM `BikeData.2021_12`
+UNION DISTINCT SELECT * FROM `BikeData.2022_01`
+UNION DISTINCT SELECT * FROM `BikeData.2022_02`
+UNION DISTINCT SELECT * FROM `BikeData.2022_03`
+UNION DISTINCT SELECT * FROM `BikeData.2022_04`
+UNION DISTINCT SELECT * FROM `BikeData.2022_05`;"
+)
+```
+
+
+#removing incomplete observations from table
+```{r}
+dbGetQuery(connection,"CREATE VIEW `bike_temp_table` AS SELECT * FROM `some_table_name`
+WHERE ride_id IS NOT NULL AND
+rideable_type IS NOT NULL AND 		
+started_at IS NOT NULL AND 	
+ended_at IS NOT NULL AND 
+start_station_name IS NOT NULL AND 	
+start_station_id IS NOT NULL AND 
+end_station_name IS NOT NULL AND 		
+end_station_id IS NOT NULL AND 	
+start_lat IS NOT NULL AND 
+start_lng IS NOT NULL AND 	
+end_lat IS NOT NULL AND 
+end_lng IS NOT NULL AND	
+member_casual IS NOT NULL AND 		
+ride_length IS NOT NULL AND 
+day_of_week IS NOT NULL")
+```
+
+
+#Correcting features and removing ride length observations <= 0mins
+```{r}
+dbGetQuery(connection,"CREATE VIEW `complete_tbl` AS  SELECT 
+rideable_type,member_casual,
+start_station_name,
+end_station_name,
+concat(start_station_name, '  -  ', end_station_name) AS route,
+start_lat,start_lng,end_lat,end_lng,day_of_week,
+EXTRACT(TIME FROM started_at) AS start_time,
+EXTRACT(DATE FROM started_at) AS start_date,
+EXTRACT(TIME FROM ended_at) AS end_time,
+EXTRACT(DATE FROM ended_at) AS end_date
+FROM `bike_temp_table` WHERE ride_length > '00:00:00'")
+```
+
+
+Questions:
+
+
+
+1.What's the distribution of rider groups year round?
+```{r}
+sqlqry = dbGetQuery(connection,"SELECT member_casual,EXTRACT(Month FROM start_date) as Month,COUNT(*) as Count FROM `complete_tbl` GROUP BY 1,2 ORDER BY 2")
+
+sqlqry
+
+
+sqlqry %>% 
+  ggplot(aes(x=Month,y=Count,color = member_casual)) + 
+  geom_line() +
+  geom_text(data = . %>% group_by(member_casual) %>% 
+  filter(Count == max(Count)), aes(label = Count,group=member_casual),show.legend = FALSE,vjust=-0.15) +
+  labs(title = "Distribution of Users (June 2021 to May 2022)",x="Month",y="Count of Members",color = "Groups") + scale_y_continuous(labels = comma) + 
+  scale_x_discrete(limits=month.abb) + 
+  theme_bw()
+
+  
+
+```
+
+
+2.What's the average borrow duration for the different groups on a yearly,monthly basis?
+
+```{r}
+#Yearly
+
+qry2 = dbGetQuery(connection,
+"SELECT member_casual, ROUND(AVG(borrow_duration),2) as AverageBorrowDuration FROM(
+SELECT 
+member_casual,
+CASE
+      WHEN start_date != end_date THEN TIME_DIFF(end_time,start_time,MINUTE) + 1440
+      ELSE TIME_DIFF(end_time,start_time,MINUTE)
+    END AS borrow_duration
+FROM `complete_tbl`)
+GROUP BY 1")
+
+qry2 %>% mutate(member_casual = as.factor(member_casual)) %>% ggplot(aes(member_casual,AverageBorrowDuration,fill = member_casual)) + stat_summary(geom = "bar", fun = 'identity') + labs(title = "Average Borrow Duration in Minutes (June 2021 to May 2022)",x="Groups",y="Minutes",fill = "Groups") + geom_text(aes(label = AverageBorrowDuration), vjust = -0.2) + theme_bw()
+
+
+#Monthly
+
+qry2b = dbGetQuery(connection,"SELECT member_casual,month,AVG(borrow_duration) as AvgBorrowDuration FROM(
+SELECT 
+member_casual,
+EXTRACT(MONTH FROM start_date) as Month,
+CASE
+      WHEN start_date != end_date THEN TIME_DIFF(end_time,start_time,MINUTE) + 1440
+      ELSE TIME_DIFF(end_time,start_time,MINUTE)
+    END AS borrow_duration
+FROM `complete_tbl`)
+GROUP BY 1,2
+")
+
+qry2b %>% mutate(member_casual = as.factor(member_casual)) %>% ggplot(aes(x=month,y=AvgBorrowDuration,fill = member_casual,width =.5)) + geom_bar(stat="identity",position="dodge") + scale_x_discrete(limits=month.abb) + labs(title = "Average Borrow Duration in Minutes by Month (June 2021 to May 2022)",x="Month",y="Minutes",fill = "Groups") + geom_text(aes(label = round(AvgBorrowDuration,1)), vjust = -0.3) + theme_bw()
+
+
+
+```
+
+3.Find the top 10 most frequent starting and ending stations and plot the results
+
+```{r}
+qry3a = dbGetQuery(connection,"SELECT start_station_name,COUNT(*) as Count
+FROM `complete_tbl` 
+GROUP BY 1 
+ORDER BY 2 
+DESC LIMIT 10")
+
+qry3a %>% ggplot(aes(x=reorder(start_station_name,(Count)),y=Count,fill=palette("Paired"))) + geom_bar(stat = 'identity') + labs(title = "Top 10 Starting Stations",x="Groups",y="Count",fill = "Groups") + coord_flip() + geom_text(aes(label = Count), hjust = 1.2,colour = "white",size = 3) + theme_bw() + theme(legend.position="none")
+
+qry3b = dbGetQuery(connection,"SELECT end_station_name,COUNT(*) as Count
+FROM `complete_tbl` 
+GROUP BY 1 
+ORDER BY 2 
+DESC LIMIT 10")
+
+qry3b %>% ggplot(aes(x=reorder(end_station_name,(Count)),y=Count,fill=brewer.pal("Spectral",n=10))) + geom_bar(stat = 'identity') + labs(title = "Top 10 Ending Stations",x="Groups",y="Count",fill = "Groups") + coord_flip() + geom_text(aes(label = Count), hjust = 1.2,colour = "white",size = 3) + theme_bw() + theme(legend.position="none")
+```
+
+
+
+
+
+4.What are the top 10 routes taken by the different groups and what are the average borrow duration for each of these routes?
+
+```{r}
+qry4a = dbGetQuery(connection,"SELECT route, COUNT(*) as Freq FROM `complete_tbl` 
+WHERE member_casual = 'casual'
+GROUP BY 1 
+ORDER BY 2 DESC
+LIMIT 10
+")
+
+qry4a %>% ggplot(aes(x=reorder(route,(Freq)),y=Freq,fill=palette("Paired"))) + geom_bar(stat='identity') + coord_flip() + theme_bw() + theme(axis.text.y = element_text(size = 6),axis.text.x = element_text(size = 7),legend.position = "none") + labs(title = "Top 10 Routes by Count (Casual Riders)",y="Count",x="Routes") +
+  geom_text(aes(label = Freq), hjust = 1.2,colour = "white",size = 3)
+
+
+qry4b = dbGetQuery(connection,"SELECT route, COUNT(*) as Freq FROM `complete_tbl` 
+WHERE member_casual = 'member'
+GROUP BY 1 
+ORDER BY 2 DESC
+LIMIT 10
+")
+
+qry4b %>% ggplot(aes(x=reorder(route,(Freq)),y=Freq,fill=palette("Paired"))) + geom_bar(stat='identity') + coord_flip() + theme_bw() + theme(axis.text.y = element_text(size = 6),axis.text.x = element_text(size = 7),legend.position = "none") + labs(title = "Top 10 Routes by Count (Member Riders)",y="Count",x="Routes") +
+  geom_text(aes(label = Freq), hjust = 1.2,colour = "white",size = 3) 
+
+```
+
+
+5.When are the peak hours on a daily basis?
+
+```{r}
+qry5 = dbGetQuery(connection," SELECT member_casual,
+CASE 
+  WHEN DayOfWeek = 1 OR DayOfWeek =7 THEN 'Weekend'
+  ELSE 'Weekday'
+END AS DayOfWeek ,Hour,COUNT(*) AS Count FROM( 
+SELECT member_casual, EXTRACT(DAYOFWEEK FROM start_date) as DayOfWeek,
+EXTRACT(HOUR FROM start_time) AS Hour FROM `complete_tbl` )
+GROUP BY 1,2,3")
+
+qry5 %>% mutate(member_casual = as.factor(member_casual),DayOfWeek = as.factor(DayOfWeek)) %>% filter(member_casual == "member") %>% ggplot(aes(Hour,Count,fill=DayOfWeek,width =.5)) + geom_bar(stat="identity",position="dodge") + labs(title="Distribution of Most Frequent Cycling Hours (Members)",x="Time (Hours) ",fill="Day of Week",y="Count of Cyclists")+ scale_x_continuous(labels = comma) + theme_bw()
+
+qry5 %>% mutate(member_casual = as.factor(member_casual),DayOfWeek = as.factor(DayOfWeek)) %>% filter(member_casual == "casual") %>% ggplot(aes(Hour,Count,fill=DayOfWeek,width =.5)) + geom_bar(stat="identity",position="dodge") + labs(title="Distribution of Most Frequent Cycling Hours (Casual Riders)",x="Time (Hours) ",fill="Day of Week",y="Count of Cyclists") + scale_y_continuous(labels = comma) + theme_bw()
+
+
+```
+
+
+
+6.What's the distribution of the bike type by group?
+
+```{r}
+qry6 = dbGetQuery(connection,"SELECT member_casual,rideable_type,COUNT(*) as Count  FROM `complete_tbl` 
+GROUP BY 1,2")
+
+qry6 %>% 
+  mutate(member_casual = as.factor(member_casual),rideable_type = as.factor(rideable_type), rideable_type=recode(rideable_type,classic_bike = "Classic Bike", docked_bike = "Docked Bike",electric_bike = "Electric Bike")) %>% 
+  ggplot(aes(rideable_type,Count,fill=member_casual)) + 
+    geom_bar(stat='identity',position="dodge")+
+      labs(title="Distribution of Bike Types",x="Types of Bikes",fill="Groups") +
+        scale_y_continuous(labels = comma) + theme_bw()
+
+```
+
+
+
+
