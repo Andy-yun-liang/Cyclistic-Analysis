@@ -20,6 +20,9 @@ To be able to derive actionable insights to convert the casual riders into annua
 
 2. factors that would encourage a conversion
 
+Link to dashboard: 
+https://public.tableau.com/app/profile/andy.liang1614/viz/CyclisticsBike-ShareProgram_16567299015020/Dashboard1
+
 ## Questions
 
 
