@@ -53,12 +53,13 @@ All bikes are returned within a 24 hr interval however when the date do not matc
 ```r
 #Yearly basis
 
-qry2 = dbGetQuery(connection,"SELECT member_casual,
+qry2 = dbGetQuery(connection,
+                              "SELECT member_casual,
                               ROUND(AVG(borrow_duration),2) as AverageBorrowDuration 
                               FROM(SELECT member_casual,
                               CASE
-                                 WHEN start_date != end_date THEN TIME_DIFF(end_time,start_time,MINUTE) + 1440
-                                 ELSE TIME_DIFF(end_time,start_time,MINUTE)
+                                WHEN start_date != end_date THEN TIME_DIFF(end_time,start_time,MINUTE) + 1440
+                                ELSE TIME_DIFF(end_time,start_time,MINUTE)
                               END AS borrow_duration
                               FROM `path_to_table_name`)
                               GROUP BY 1")
@@ -76,13 +77,14 @@ geom_text(aes(label = AverageBorrowDuration), vjust = -0.2) + theme_bw()
 ```r
 #Monthly basis
 
-qry2b = dbGetQuery(connection,"SELECT member_casual,month,
+qry2b = dbGetQuery(connection,
+                              "SELECT member_casual,month,
                               AVG(borrow_duration) as AvgBorrowDuration FROM(
                               SELECT member_casual,
                               EXTRACT(MONTH FROM start_date) as Month,
                                  CASE
-                                    WHEN start_date != end_date THEN TIME_DIFF(end_time,start_time,MINUTE) + 1440
-                                    ELSE TIME_DIFF(end_time,start_time,MINUTE)
+                                   WHEN start_date != end_date THEN TIME_DIFF(end_time,start_time,MINUTE) + 1440
+                                   ELSE TIME_DIFF(end_time,start_time,MINUTE)
                                  END AS borrow_duration
                               FROM `path_to_table_name`)
                               GROUP BY 1,2")
